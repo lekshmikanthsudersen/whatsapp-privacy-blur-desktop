@@ -1,0 +1,267 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: #0f1720;
+  color: #e9edef;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 360px;
+  background: #0f1720;
+}
+
+.shell {
+  padding: 22px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: #00a884;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.panel {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #263640;
+  border-radius: 8px;
+  background: #263640;
+}
+
+.status-banner {
+  margin: 0 0 16px;
+  border: 1px solid #8a5a18;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #2a1d10;
+  color: #ffd7a1;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.status-banner[data-tone="ok"] {
+  border-color: #126b57;
+  background: #0d261f;
+  color: #99f0dc;
+}
+
+.status-banner[hidden] {
+  display: none !important;
+}
+
+.panel + .panel {
+  margin-top: 16px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 64px;
+  padding: 12px 14px;
+  background: #17212b;
+}
+
+.row span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+em {
+  color: #9fb0ba;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+input[type="checkbox"] {
+  width: 44px;
+  height: 24px;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: #00a884;
+  cursor: pointer;
+}
+
+input[type="number"],
+input[type="time"],
+select,
+textarea {
+  width: 132px;
+  min-height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid #334550;
+  border-radius: 7px;
+  background: #0f1720;
+  color: #e9edef;
+  font: 600 13px "Segoe UI", system-ui, sans-serif;
+}
+
+input[type="number"] {
+  padding: 6px 8px;
+}
+
+select {
+  padding: 6px 28px 6px 8px;
+}
+
+textarea {
+  width: min(220px, 48vw);
+  min-height: 84px;
+  padding: 8px;
+  resize: vertical;
+}
+
+.row.tall {
+  align-items: flex-start;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #cbd5db;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+}
+
+.switch i {
+  position: relative;
+  width: 52px;
+  height: 30px;
+  border-radius: 999px;
+  background: #3b4a54;
+  box-shadow: inset 0 0 0 1px #50616b;
+}
+
+.switch i::after {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e9edef;
+  content: "";
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.switch input:checked + i {
+  background: #00a884;
+  box-shadow: none;
+}
+
+.switch input:checked + i::after {
+  transform: translateX(22px);
+}
+
+footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 16px;
+  color: #9fb0ba;
+  font-size: 12px;
+}
+
+kbd {
+  min-width: 24px;
+  padding: 3px 6px;
+  border: 1px solid #334550;
+  border-radius: 5px;
+  background: #17212b;
+  color: #e9edef;
+  font: 700 11px "Segoe UI", system-ui, sans-serif;
+  text-align: center;
+}
+
+.preset-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.preset-card {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-height: 116px;
+  border: 1px solid #263640;
+  border-radius: 8px;
+  padding: 18px;
+  background: #17212b;
+  color: #e9edef;
+  cursor: pointer;
+  text-align: left;
+}
+
+.preset-card:hover,
+.preset-card:focus-visible,
+.preset-card.primary {
+  border-color: #00a884;
+  outline: none;
+}
+
+.preset-card.primary {
+  box-shadow: inset 0 0 0 1px rgba(0, 168, 132, 0.3);
+}
+
+.action-button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 13px;
+  background: #00a884;
+  color: #071a16;
+  cursor: pointer;
+  font: 700 13px "Segoe UI", system-ui, sans-serif;
+}
+
+.diagnostics-panel {
+  padding: 0;
+}
+
+pre {
+  overflow: auto;
+  max-height: calc(100vh - 170px);
+  margin: 0;
+  padding: 14px;
+  color: #d4e2e8;
+  font: 12px/1.45 Consolas, "Courier New", monospace;
+  white-space: pre-wrap;
+}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Privacy Blur Diagnostics</title>
+    <link rel="stylesheet" href="./settings.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div>
+          <p class="eyebrow">WhatsApp Privacy Blur</p>
+          <h1>Diagnostics</h1>
+        </div>
+        <button class="action-button" type="button" id="export">Export JSON</button>
+      </header>
+
+      <section class="panel diagnostics-panel" aria-label="Diagnostics summary">
+        <pre id="diagnostics">Loading...</pre>
+      </section>
+
+      <footer>
+        <span id="status">No messages, cookies, session data, or WhatsApp DOM content are included.</span>
+      </footer>
+    </main>
+
+    <script src="./diagnostics.js"></script>
+  </body>
+</html>

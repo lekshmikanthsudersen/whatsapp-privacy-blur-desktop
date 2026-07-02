@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Blur Settings</title>
+    <link rel="stylesheet" href="./settings.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div>
+          <p class="eyebrow">WhatsApp Privacy Blur</p>
+          <h1>Settings</h1>
+        </div>
+        <label class="switch master">
+          <span>On</span>
+          <input type="checkbox" data-setting="enabled">
+          <i></i>
+        </label>
+      </header>
+
+      <section class="panel" aria-label="Blur settings">
+        <label class="row">
+          <span>
+            <strong>All messages in chat</strong>
+            <em>Blur message bubbles in the open conversation.</em>
+          </span>
+          <input type="checkbox" data-setting="blurMessages">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Last message previews</strong>
+            <em>Blur preview text in the chat list.</em>
+          </span>
+          <input type="checkbox" data-setting="blurPreviews">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Media preview</strong>
+            <em>Blur images, videos, stickers, and GIFs.</em>
+          </span>
+          <input type="checkbox" data-setting="blurMedia">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Media gallery</strong>
+            <em>Blur thumbnails inside media viewer dialogs.</em>
+          </span>
+          <input type="checkbox" data-setting="blurGallery">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Text input</strong>
+            <em>Obscure text while you type.</em>
+          </span>
+          <input type="checkbox" data-setting="obscureInput">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Profile pictures</strong>
+            <em>Blur avatars in lists, headers, and chats.</em>
+          </span>
+          <input type="checkbox" data-setting="blurAvatars">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Group/user names</strong>
+            <em>Blur visible chat and participant names.</em>
+          </span>
+          <input type="checkbox" data-setting="blurNames">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>No transition delay</strong>
+            <em>Reveal hovered content immediately.</em>
+          </span>
+          <input type="checkbox" data-setting="noTransitionDelay">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Unblur all on app hover</strong>
+            <em>Reveal everything while the app is hovered.</em>
+          </span>
+          <input type="checkbox" data-setting="unblurOnAppHover">
+        </label>
+      </section>
+
+      <section class="panel" aria-label="Desktop settings">
+        <label class="row">
+          <span>
+            <strong>Close to tray</strong>
+            <em>Hide the app to the system tray when closing the window.</em>
+          </span>
+          <input type="checkbox" data-setting="closeToTray">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Temporary reveal</strong>
+            <em>How long Ctrl+Alt+R reveals blurred content.</em>
+          </span>
+          <input type="number" min="3000" max="30000" step="1000" data-setting="temporaryRevealMs">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Chat zoom</strong>
+            <em>Choose a comfortable WhatsApp reading size.</em>
+          </span>
+          <select data-setting="zoomFactor" data-value="number">
+            <option value="0.9">Compact 90%</option>
+            <option value="1">Default 100%</option>
+            <option value="1.1">Comfortable 110%</option>
+            <option value="1.25">Large 125%</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="panel" aria-label="Workflow settings">
+        <label class="row">
+          <span>
+            <strong>Preserve unread position</strong>
+            <em>Save the unread chat list position before replying.</em>
+          </span>
+          <input type="checkbox" data-setting="preserveUnreadListPosition">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Focus mode</strong>
+            <em>Hide non-priority unread attention surfaces.</em>
+          </span>
+          <input type="checkbox" data-setting="focusMode">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Daily privacy reset</strong>
+            <em>Restore blur at startup and each midnight.</em>
+          </span>
+          <input type="checkbox" data-setting="dailyPrivacyReset">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Disable hardware acceleration</strong>
+            <em>Fallback for GPU/video renderer errors. Requires app restart.</em>
+          </span>
+          <input type="checkbox" data-setting="disableHardwareAcceleration">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Quiet hours</strong>
+            <em>Suppress local app toasts and attention during this window.</em>
+          </span>
+          <input type="checkbox" data-setting="quietHoursEnabled">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Quiet starts</strong>
+            <em>24-hour time.</em>
+          </span>
+          <input type="time" data-setting="quietHoursStart">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Quiet ends</strong>
+            <em>24-hour time.</em>
+          </span>
+          <input type="time" data-setting="quietHoursEnd">
+        </label>
+
+        <label class="row">
+          <span>
+            <strong>Memory warning</strong>
+            <em>Show high-memory status above this private-memory level.</em>
+          </span>
+          <input type="number" min="256" max="8192" step="64" data-setting="memoryWarnMb" data-value="number">
+        </label>
+
+        <label class="row tall">
+          <span>
+            <strong>Priority contacts</strong>
+            <em>One visible chat name keyword per line.</em>
+          </span>
+          <textarea rows="4" data-setting="priorityKeywords"></textarea>
+        </label>
+
+        <label class="row tall">
+          <span>
+            <strong>Quick reply templates</strong>
+            <em>One local insert-only reply template per line.</em>
+          </span>
+          <textarea rows="5" data-setting="quickReplyTemplates"></textarea>
+        </label>
+      </section>
+
+      <footer>
+        <kbd>Alt</kbd><kbd>X</kbd>
+        <span>toggles blur</span>
+        <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>R</kbd>
+        <span>reveals temporarily</span>
+      </footer>
+    </main>
+
+    <script src="./settings.js"></script>
+  </body>
+</html>

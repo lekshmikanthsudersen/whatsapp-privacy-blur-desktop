@@ -1,0 +1,64 @@
+{
+  "name": "whatsapp-privacy-blur",
+  "version": "1.0.0",
+  "description": "Standalone WhatsApp Web desktop wrapper with privacy blur controls.",
+  "main": "src/main.js",
+  "author": "Sudersen",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "dist": "electron-builder --win",
+    "lint:syntax": "node --check src/main.js && node --check src/preload-whatsapp.js && node --check src/preload-settings.js && node --check src/settings.js && node --check src/first-run.js && node --check src/diagnostics.js",
+    "test": "npm run lint:syntax && node --test test/*.test.js"
+  },
+  "build": {
+    "appId": "local.whatsappprivacyblur.app",
+    "productName": "WhatsApp Privacy Blur",
+    "files": [
+      "assets/**/*",
+      "src/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    },
+    "nsis": {
+      "artifactName": "${productName} Setup ${version}.${ext}",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "WhatsApp Privacy Blur"
+    }
+  },
+  "devDependencies": {
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.3"
+  }
+}

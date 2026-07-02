@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Set Up WhatsApp Privacy Blur</title>
+    <link rel="stylesheet" href="./settings.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div>
+          <p class="eyebrow">WhatsApp Privacy Blur</p>
+          <h1>Choose Privacy Preset</h1>
+        </div>
+      </header>
+
+      <section class="preset-grid" aria-label="Privacy presets">
+        <button class="preset-card" type="button" data-preset="strict">
+          <strong>Strict</strong>
+          <em>Blur every privacy category and keep close-to-tray enabled.</em>
+        </button>
+
+        <button class="preset-card primary" type="button" data-preset="balanced">
+          <strong>Balanced</strong>
+          <em>Use the normal privacy defaults for everyday desktop use.</em>
+        </button>
+
+        <button class="preset-card" type="button" data-preset="light">
+          <strong>Light</strong>
+          <em>Blur chat list details, names, avatars, and media, but keep open messages readable.</em>
+        </button>
+      </section>
+
+      <footer>
+        <span id="status">Select a preset to start WhatsApp.</span>
+      </footer>
+    </main>
+
+    <script src="./first-run.js"></script>
+  </body>
+</html>
