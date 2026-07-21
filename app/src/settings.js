@@ -20,6 +20,8 @@ const SETTINGS_PAGE_DEFAULTS = Object.freeze({
   memoryWarnMb: 900,
   dailyPrivacyReset: true,
   disableHardwareAcceleration: false,
+  captureProtection: false,
+  privacyProfile: 'work',
   priorityKeywords: '',
   quickReplyTemplates: ''
 });

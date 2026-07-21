@@ -20,6 +20,20 @@
         </label>
       </header>
 
+      <section class="panel" aria-label="Privacy profile">
+        <label class="row">
+          <span>
+            <strong>Privacy profile</strong>
+            <em>Choose Work, Private, or Presentation. Presentation is also the panic mode.</em>
+          </span>
+          <select data-setting="privacyProfile">
+            <option value="work">Work</option>
+            <option value="private">Private</option>
+            <option value="presentation">Presentation</option>
+          </select>
+        </label>
+      </section>
+
       <section class="panel" aria-label="Blur settings">
         <label class="row">
           <span>
@@ -87,8 +101,8 @@
 
         <label class="row">
           <span>
-            <strong>Unblur all on app hover</strong>
-            <em>Reveal everything while the app is hovered.</em>
+            <strong>Legacy pointer reveal</strong>
+            <em>Not recommended. Use the Hold reveal control in a chat instead.</em>
           </span>
           <input type="checkbox" data-setting="unblurOnAppHover">
         </label>
@@ -160,6 +174,14 @@
 
         <label class="row">
           <span>
+            <strong>Capture protection</strong>
+            <em>Ask Windows to hide this window from standard screen capture. It is best-effort and cannot block every capture method.</em>
+          </span>
+          <input type="checkbox" data-setting="captureProtection">
+        </label>
+
+        <label class="row">
+          <span>
             <strong>Quiet hours</strong>
             <em>Suppress local app toasts and attention during this window.</em>
           </span>
@@ -201,7 +223,7 @@
         <label class="row tall">
           <span>
             <strong>Quick reply templates</strong>
-            <em>One local insert-only reply template per line.</em>
+            <em>One local insert-only template per line. Use <code>Category :: reply text</code> to group entries.</em>
           </span>
           <textarea rows="5" data-setting="quickReplyTemplates"></textarea>
         </label>
@@ -212,6 +234,8 @@
         <span>toggles blur</span>
         <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>R</kbd>
         <span>reveals temporarily</span>
+        <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>P</kbd>
+        <span>enables presentation privacy</span>
       </footer>
     </main>
 

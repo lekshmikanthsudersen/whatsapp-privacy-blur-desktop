@@ -10,8 +10,12 @@
     "start": "electron .",
     "build": "electron-builder --win",
     "dist": "electron-builder --win",
-    "lint:syntax": "node --check src/main.js && node --check src/preload-whatsapp.js && node --check src/preload-settings.js && node --check src/settings.js && node --check src/first-run.js && node --check src/diagnostics.js",
-    "test": "npm run lint:syntax && node --test test/*.test.js"
+    "lint:syntax": "node --check src/main.js && node --check src/preload-whatsapp.js && node --check src/preload-settings.js && node --check src/settings.js && node --check src/first-run.js && node --check src/diagnostics.js && node --check src/security-helpers.js && node --check scripts/after-pack.js && node --check scripts/generate-sbom.js && node --check scripts/generate-release-manifest.js && node --check scripts/verify-fuses.js",
+    "test": "npm run lint:syntax && node --test test/*.test.js",
+    "sbom": "node scripts/generate-sbom.js",
+    "release:manifest": "node scripts/generate-release-manifest.js",
+    "verify:fuses": "node scripts/verify-fuses.js",
+    "verify:release": "npm run test && npm run build && npm run verify:fuses && npm run sbom && npm run release:manifest"
   },
   "build": {
     "appId": "local.whatsappprivacyblur.app",
@@ -21,6 +25,8 @@
       "src/**/*",
       "package.json"
     ],
+    "asar": true,
+    "afterPack": "scripts/after-pack.js",
     "directories": {
       "output": "dist"
     },
@@ -58,7 +64,8 @@
     }
   },
   "devDependencies": {
-    "electron": "^42.5.0",
+    "@electron/fuses": "^1.8.0",
+    "electron": "^43.1.1",
     "electron-builder": "^26.15.3"
   }
 }

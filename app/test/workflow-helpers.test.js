@@ -9,6 +9,7 @@ const {
   parseClock,
   parseUnreadCount,
   priorityTermsFromText,
+  quickReplyEntriesFromText,
   quickReplyTemplatesFromText,
   redactDiagnostics,
   sanitizeSettings
@@ -107,6 +108,14 @@ test('quick replies and priority terms parse local settings without message cont
   assert.deepEqual(priorityTermsFromText(' Alice, Bob\nTEAM '), ['alice', 'bob', 'team']);
 });
 
+test('quick replies support local categories without changing insert text', () => {
+  assert.deepEqual(quickReplyEntriesFromText('Sales :: I will send the quote today.\nOn it'), [
+    { category: 'Sales', text: 'I will send the quote today.' },
+    { category: 'General', text: 'On it' }
+  ]);
+  assert.deepEqual(quickReplyTemplatesFromText('Sales :: I will send the quote today.'), ['I will send the quote today.']);
+});
+
 test('unread count is title-based only', () => {
   assert.equal(parseUnreadCount('(12) WhatsApp'), 12);
   assert.equal(parseUnreadCount('(3) WhatsApp Business'), 3);
@@ -185,20 +194,22 @@ test('dynamic WhatsApp user agent uses the runtime Chromium version', () => {
   assert.match(userAgent, /Safari\/537\.36$/);
 });
 
-test('diagnostics redacts user-authored local text without dropping process memory', () => {
+test('diagnostics redacts user-authored text and operating-system identifiers', () => {
   const diagnostics = redactDiagnostics({
+    app: { name: 'WhatsApp Privacy Blur', version: '1.0.0', appId: 'local.test', exePath: 'C:\\Users\\Private\\app.exe', userAgent: 'fingerprint' },
+    paths: { userData: 'C:\\Users\\Private\\AppData' },
     settings: {
       enabled: true,
       priorityKeywords: 'Private Client',
       quickReplyTemplates: 'Sensitive reply'
     },
-    processes: [{ pid: 123, type: 'Renderer', privateMb: 512 }],
-    app: { sessionPartition: 'persist:whatsapp-privacy-blur' }
+    processes: [{ pid: 123, type: 'Renderer', privateMb: 512, cpuPercent: 2.5, workingSetMb: 700, sharedMb: 42 }]
   });
 
   assert.equal(diagnostics.settings.enabled, true);
   assert.equal(diagnostics.settings.priorityKeywords, '[redacted]');
   assert.equal(diagnostics.settings.quickReplyTemplates, '[redacted]');
-  assert.deepEqual(diagnostics.processes, [{ pid: 123, type: 'Renderer', privateMb: 512 }]);
-  assert.equal(diagnostics.app.sessionPartition, 'persist:whatsapp-privacy-blur');
+  assert.deepEqual(diagnostics.processes, [{ type: 'Renderer', privateMb: 512, cpuPercent: 2.5, workingSetMb: 700, sharedMb: 42 }]);
+  assert.deepEqual(diagnostics.app, { name: 'WhatsApp Privacy Blur', version: '1.0.0', appId: 'local.test' });
+  assert.equal(Object.hasOwn(diagnostics, 'paths'), false);
 });

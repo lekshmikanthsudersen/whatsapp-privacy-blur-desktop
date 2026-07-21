@@ -252,6 +252,29 @@ kbd {
   font: 700 13px "Segoe UI", system-ui, sans-serif;
 }
 
+.action-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.secondary-button {
+  min-height: 34px;
+  border: 1px solid #45606d;
+  border-radius: 7px;
+  padding: 0 13px;
+  background: transparent;
+  color: #d4e2e8;
+  cursor: pointer;
+  font: 700 13px "Segoe UI", system-ui, sans-serif;
+}
+
+.secondary-button:hover,
+.secondary-button:focus-visible {
+  border-color: #00a884;
+  outline: none;
+}
+
 .diagnostics-panel {
   padding: 0;
 }

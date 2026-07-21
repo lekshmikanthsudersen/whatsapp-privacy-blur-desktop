@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('privacySettings', {
   completeFirstRun: (presetName) => ipcRenderer.invoke('first-run:complete', presetName),
   getDiagnostics: () => ipcRenderer.invoke('diagnostics:get'),
   exportDiagnostics: () => ipcRenderer.invoke('diagnostics:export'),
+  exportSupportBundle: () => ipcRenderer.invoke('diagnostics:export-support'),
   onUpdate: (callback) => {
     const listener = (_event, settings) => callback(settings);
     ipcRenderer.on('privacy-settings-updated', listener);

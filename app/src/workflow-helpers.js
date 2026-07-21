@@ -66,11 +66,25 @@ function parseUnreadCount(title) {
 }
 
 function quickReplyTemplatesFromText(value, limit = 12) {
+  return quickReplyEntriesFromText(value, limit).map((entry) => entry.text);
+}
+
+function quickReplyEntriesFromText(value, limit = 12) {
   return String(value || '')
     .split(/\r?\n/)
     .map((item) => item.trim())
     .filter(Boolean)
-    .slice(0, limit);
+    .slice(0, limit)
+    .map((item) => {
+      const separator = item.indexOf('::');
+      if (separator <= 0) {
+        return { category: 'General', text: item };
+      }
+
+      const category = item.slice(0, separator).trim().slice(0, 40) || 'General';
+      const text = item.slice(separator + 2).trim();
+      return { category, text: text || item };
+    });
 }
 
 function priorityTermsFromText(value) {
@@ -123,11 +137,39 @@ function normalizeSettingsBridge(bridge) {
 function redactDiagnostics(diagnostics) {
   const clone = JSON.parse(JSON.stringify(diagnostics || {}));
 
+  delete clone.paths;
+
+  if (clone.app) {
+    clone.app = Object.fromEntries(
+      ['name', 'version', 'appId']
+        .filter((key) => Object.hasOwn(clone.app, key))
+        .map((key) => [key, clone.app[key]])
+    );
+  }
+
+  if (clone.runtime) {
+    clone.runtime = Object.fromEntries(
+      ['electron', 'chrome', 'node', 'gpuFeatureStatus']
+        .filter((key) => Object.hasOwn(clone.runtime, key))
+        .map((key) => [key, clone.runtime[key]])
+    );
+  }
+
   if (Object.prototype.hasOwnProperty.call(clone.settings || {}, 'priorityKeywords')) {
     clone.settings.priorityKeywords = '[redacted]';
   }
   if (Object.prototype.hasOwnProperty.call(clone.settings || {}, 'quickReplyTemplates')) {
     clone.settings.quickReplyTemplates = '[redacted]';
+  }
+
+  if (Array.isArray(clone.processes)) {
+    clone.processes = clone.processes.map((process) => ({
+      type: process.type,
+      cpuPercent: process.cpuPercent,
+      workingSetMb: process.workingSetMb,
+      privateMb: process.privateMb,
+      sharedMb: process.sharedMb
+    }));
   }
 
   return clone;
@@ -165,6 +207,7 @@ module.exports = {
   parseClock,
   parseUnreadCount,
   priorityTermsFromText,
+  quickReplyEntriesFromText,
   quickReplyTemplatesFromText,
   redactDiagnostics,
   sanitizeSettings,
