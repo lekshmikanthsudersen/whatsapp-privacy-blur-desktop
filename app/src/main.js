@@ -30,6 +30,7 @@ const APP_ID = 'local.whatsappprivacyblur.app';
 const APP_ICON_PATH = path.join(__dirname, '..', 'assets', 'icon.ico');
 const APP_TRAY_ICON_PATH = path.join(__dirname, '..', 'assets', 'icon.png');
 const SESSION_PARTITION = 'persist:whatsapp-privacy-blur';
+const IDLE_MEMORY_TRIM_DELAY_MS = 5 * 60 * 1000;
 
 app.setAppUserModelId(APP_ID);
 app.enableSandbox();
@@ -46,6 +47,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   noTransitionDelay: false,
   unblurOnAppHover: false,
   closeToTray: true,
+  idlePowerSaver: true,
   hasCompletedFirstRun: false,
   temporaryRevealMs: 8000,
   zoomFactor: 1,
@@ -152,6 +154,10 @@ let lastOptimizeResult;
 let whatsappLoaded = false;
 let lastNotifiedUnreadCount = 0;
 let optimizeInFlight = false;
+let isMainWindowIdle = false;
+let idleMemoryTrimTimer;
+let lastPermissionDecisionKey = '';
+let lastPermissionDecisionAt = 0;
 const pendingWhatsAppCommands = [];
 const runtimeDiagnostics = {
   events: [],
@@ -208,6 +214,45 @@ function logEvent(scope, message, details) {
   return entry;
 }
 
+function getLiveMainWindow() {
+  return mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+}
+
+function getLiveWhatsAppContents() {
+  const win = getLiveMainWindow();
+  const wc = win?.webContents;
+  return wc && !wc.isDestroyed() ? wc : undefined;
+}
+
+function sendToWhatsApp(channel, payload, scope = 'whatsapp') {
+  const wc = getLiveWhatsAppContents();
+  if (!wc) {
+    return false;
+  }
+
+  try {
+    wc.send(channel, payload);
+    return true;
+  } catch {
+    logEvent(scope, 'renderer message skipped');
+    return false;
+  }
+}
+
+function safelyUseTray(action) {
+  if (!tray || tray.isDestroyed()) {
+    return false;
+  }
+
+  try {
+    action(tray);
+    return true;
+  } catch {
+    logEvent('tray', 'tray action skipped');
+    return false;
+  }
+}
+
 function readRawSettingsFile() {
   try {
     return JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
@@ -254,9 +299,7 @@ function showWhatsAppToast(message) {
     return;
   }
 
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('whatsapp-command', { type: 'show-toast', message });
-  }
+  sendToWhatsApp('whatsapp-command', { type: 'show-toast', message });
 }
 
 function isQuietHoursActive(date = new Date()) {
@@ -370,7 +413,7 @@ function quickReplyEntries() {
 }
 
 function broadcastSettings() {
-  mainWindow?.webContents.send('privacy-settings-updated', settings);
+  sendToWhatsApp('privacy-settings-updated', settings);
   settingsWindow?.webContents.send('privacy-settings-updated', settings);
   firstRunWindow?.webContents.send('privacy-settings-updated', settings);
   updateTray();
@@ -378,15 +421,128 @@ function broadcastSettings() {
 }
 
 function applyZoomFactor() {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.setZoomFactor(settings.zoomFactor);
+  const wc = getLiveWhatsAppContents();
+  if (wc) {
+    wc.setZoomFactor(settings.zoomFactor);
+  }
+}
+
+function resetChatZoom() {
+  updateSettings({ zoomFactor: 1 });
+}
+
+function stepChatZoom(direction) {
+  const values = ZOOM_PRESETS.map((preset) => preset.value);
+  const currentIndex = values.reduce((closestIndex, value, index) => (
+    Math.abs(value - settings.zoomFactor) < Math.abs(values[closestIndex] - settings.zoomFactor) ? index : closestIndex
+  ), 0);
+  const nextIndex = Math.min(values.length - 1, Math.max(0, currentIndex + direction));
+  updateSettings({ zoomFactor: values[nextIndex] });
+}
+
+function setMainFullScreen(enabled) {
+  const win = getLiveMainWindow();
+  if (!win) {
+    return;
+  }
+
+  win.setFullScreen(Boolean(enabled));
+  rebuildMenu();
+}
+
+function toggleMainFullScreen() {
+  const win = getLiveMainWindow();
+  if (win) {
+    setMainFullScreen(!win.isFullScreen());
   }
 }
 
 function applyCaptureProtection() {
-  if (mainWindow && !mainWindow.isDestroyed() && typeof mainWindow.setContentProtection === 'function') {
-    mainWindow.setContentProtection(Boolean(settings.captureProtection));
+  const win = getLiveMainWindow();
+  if (win && typeof win.setContentProtection === 'function') {
+    win.setContentProtection(Boolean(settings.captureProtection));
   }
+}
+
+function clearIdleMemoryTrim() {
+  if (idleMemoryTrimTimer) {
+    clearTimeout(idleMemoryTrimTimer);
+    idleMemoryTrimTimer = undefined;
+  }
+}
+
+async function trimHiddenWindowMemory() {
+  if (!isMainWindowIdle || optimizeInFlight) {
+    return;
+  }
+
+  const before = sampleMemory();
+  if (before.totalPrivateMb < settings.memoryWarnMb) {
+    logEvent('power', 'idle memory trim skipped', { totalPrivateMb: before.totalPrivateMb });
+    return;
+  }
+
+  optimizeInFlight = true;
+  try {
+    const result = await withDebugger(async (wc) => {
+      await wc.debugger.sendCommand('Memory.simulatePressureNotification', { level: 'moderate' });
+      await delay(500);
+      await wc.debugger.sendCommand('HeapProfiler.collectGarbage');
+      return { ok: true };
+    });
+    const after = sampleMemory();
+    lastOptimizeResult = {
+      at: new Date().toISOString(),
+      before,
+      after,
+      deltaPrivateMb: Number((after.totalPrivateMb - before.totalPrivateMb).toFixed(1)),
+      result: { ok: Boolean(result.ok), reason: result.ok ? undefined : 'idle-trim-unavailable' },
+      source: 'idle'
+    };
+    logEvent('power', 'idle memory trim completed', { ok: Boolean(result.ok), deltaPrivateMb: lastOptimizeResult.deltaPrivateMb });
+    updateTray();
+  } finally {
+    optimizeInFlight = false;
+  }
+}
+
+function scheduleIdleMemoryTrim() {
+  clearIdleMemoryTrim();
+  if (!settings.idlePowerSaver || !isMainWindowIdle) {
+    return;
+  }
+
+  idleMemoryTrimTimer = setTimeout(() => {
+    idleMemoryTrimTimer = undefined;
+    void trimHiddenWindowMemory();
+  }, IDLE_MEMORY_TRIM_DELAY_MS);
+}
+
+function applyIdlePowerSaver(reason = 'window-state') {
+  const win = getLiveMainWindow();
+  const shouldIdle = Boolean(settings.idlePowerSaver && win && (win.isMinimized() || !win.isVisible()));
+  if (shouldIdle === isMainWindowIdle) {
+    return;
+  }
+
+  isMainWindowIdle = shouldIdle;
+  const wc = getLiveWhatsAppContents();
+  if (wc) {
+    try {
+      // This preserves WhatsApp's connection while Chromium throttles a hidden page.
+      wc.setBackgroundThrottling(true);
+      wc.send('whatsapp-command', { type: 'set-idle-mode', idle: shouldIdle });
+    } catch {
+      logEvent('power', 'idle mode renderer update skipped');
+    }
+  }
+
+  if (shouldIdle) {
+    scheduleIdleMemoryTrim();
+  } else {
+    clearIdleMemoryTrim();
+  }
+  logEvent('power', 'idle mode changed', { idle: shouldIdle, powerSaverEnabled: Boolean(settings.idlePowerSaver), reason: Boolean(reason) });
 }
 
 function applyPrivacyProfile(profileName) {
@@ -395,6 +551,13 @@ function applyPrivacyProfile(profileName) {
 }
 
 function recordPermissionDecision(permission, allowed) {
+  const now = Date.now();
+  const key = `${permission}:${Boolean(allowed)}`;
+  if (key === lastPermissionDecisionKey && now - lastPermissionDecisionAt < 5 * 60 * 1000) {
+    return;
+  }
+  lastPermissionDecisionKey = key;
+  lastPermissionDecisionAt = now;
   const decision = { at: new Date().toISOString(), permission, allowed: Boolean(allowed) };
   runtimeDiagnostics.permissionDecisions = [...runtimeDiagnostics.permissionDecisions.slice(-19), decision];
   logEvent('permission', 'permission-decision', { allowed: Boolean(allowed) });
@@ -437,8 +600,8 @@ function delay(ms) {
 }
 
 async function withDebugger(task) {
-  const wc = mainWindow?.webContents;
-  if (!wc || wc.isDestroyed()) {
+  const wc = getLiveWhatsAppContents();
+  if (!wc) {
     return { ok: false, reason: 'no-window' };
   }
 
@@ -534,7 +697,7 @@ function dailyPrivacyReset() {
   if (!settings.enabled) {
     updateSettings({ enabled: true }, { silent: true });
   }
-  mainWindow?.webContents.send('whatsapp-command', { type: 'privacy-reset' });
+  sendToWhatsApp('whatsapp-command', { type: 'privacy-reset' });
 }
 
 function scheduleDailyPrivacyReset() {
@@ -555,6 +718,7 @@ function updateSettings(patch, options = {}) {
   broadcastSettings();
   applyZoomFactor();
   applyCaptureProtection();
+  applyIdlePowerSaver('settings');
 
   if (!options.silent) {
     if (Object.prototype.hasOwnProperty.call(patch, 'enabled') && previous.enabled !== settings.enabled) {
@@ -573,35 +737,46 @@ function focusMainWindow() {
     return;
   }
 
-  if (!mainWindow || mainWindow.isDestroyed()) {
+  const win = getLiveMainWindow();
+  if (!win) {
     createMainWindow();
     return;
   }
 
-  if (mainWindow.isMinimized()) {
-    mainWindow.restore();
+  try {
+    if (win.isMinimized()) {
+      win.restore();
+    }
+    if (!win.isVisible()) {
+      win.show();
+    }
+    win.focus();
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.focus();
+    }
+    applyIdlePowerSaver('focus');
+  } catch {
+    logEvent('tray', 'focus request skipped');
   }
-
-  mainWindow.show();
-  mainWindow.focus();
-  mainWindow.webContents.focus();
 }
 
 function flushPendingWhatsAppCommands() {
-  const wc = mainWindow?.webContents;
-  if (!wc || wc.isDestroyed() || !whatsappLoaded) {
+  const wc = getLiveWhatsAppContents();
+  if (!wc || !whatsappLoaded) {
     return;
   }
 
   while (pendingWhatsAppCommands.length > 0) {
-    wc.send('whatsapp-command', pendingWhatsAppCommands.shift());
+    if (!sendToWhatsApp('whatsapp-command', pendingWhatsAppCommands.shift())) {
+      return;
+    }
   }
 }
 
 function sendWhatsAppCommand(type, payload = {}) {
   focusMainWindow();
-  const wc = mainWindow?.webContents;
-  if (!wc || wc.isDestroyed()) {
+  const wc = getLiveWhatsAppContents();
+  if (!wc) {
     return;
   }
 
@@ -611,7 +786,7 @@ function sendWhatsAppCommand(type, payload = {}) {
     return;
   }
 
-  wc.send('whatsapp-command', command);
+  sendToWhatsApp('whatsapp-command', command);
 }
 
 function revealTemporarily() {
@@ -676,7 +851,7 @@ function updateUnreadSurfaces() {
     quiet
   });
 
-  tray?.setToolTip(buildTrayTooltip(parts));
+  safelyUseTray((currentTray) => currentTray.setToolTip(buildTrayTooltip(parts)));
 
   if (mainWindow && !mainWindow.isDestroyed() && process.platform === 'win32') {
     if (!suppressAttention && unreadCount > 0) {
@@ -748,13 +923,15 @@ function createMainWindow() {
 
   mainWindow.webContents.on('did-finish-load', () => {
     whatsappLoaded = true;
-    mainWindow.webContents.send('privacy-settings-updated', settings);
-    mainWindow.webContents.send('whatsapp-command', { type: 'collect-media-diagnostics' });
+    sendToWhatsApp('privacy-settings-updated', settings);
+    sendToWhatsApp('whatsapp-command', { type: 'collect-media-diagnostics' });
+    sendToWhatsApp('whatsapp-command', { type: 'set-full-screen', enabled: Boolean(getLiveMainWindow()?.isFullScreen()) });
     if (settings.dailyPrivacyReset) {
-      mainWindow.webContents.send('whatsapp-command', { type: 'privacy-reset' });
+      sendToWhatsApp('whatsapp-command', { type: 'privacy-reset' });
     }
     flushPendingWhatsAppCommands();
     applyZoomFactor();
+    applyIdlePowerSaver('did-finish-load');
   });
 
   mainWindow.webContents.on('page-title-updated', (_event, title) => {
@@ -764,20 +941,38 @@ function createMainWindow() {
   mainWindow.on('close', (event) => {
     if (!isQuitting && settings.closeToTray) {
       event.preventDefault();
-      mainWindow.hide();
-      showWhatsAppToast('Hidden to tray');
+      const win = getLiveMainWindow();
+      if (win) {
+        win.hide();
+      }
+      logEvent('tray', 'window hidden to tray');
     }
   });
 
+  mainWindow.on('minimize', () => applyIdlePowerSaver('minimize'));
+  mainWindow.on('show', () => applyIdlePowerSaver('show'));
+  mainWindow.on('restore', () => applyIdlePowerSaver('restore'));
+  mainWindow.on('enter-full-screen', () => {
+    sendToWhatsApp('whatsapp-command', { type: 'set-full-screen', enabled: true });
+    rebuildMenu();
+  });
+  mainWindow.on('leave-full-screen', () => {
+    sendToWhatsApp('whatsapp-command', { type: 'set-full-screen', enabled: false });
+    rebuildMenu();
+  });
+
   mainWindow.on('blur', () => {
-    mainWindow.webContents.send('whatsapp-command', { type: 'privacy-reset' });
+    sendToWhatsApp('whatsapp-command', { type: 'privacy-reset' });
   });
 
   mainWindow.on('hide', () => {
-    mainWindow.webContents.send('whatsapp-command', { type: 'privacy-reset' });
+    sendToWhatsApp('whatsapp-command', { type: 'privacy-reset' });
+    applyIdlePowerSaver('hide');
   });
 
   mainWindow.on('closed', () => {
+    clearIdleMemoryTrim();
+    isMainWindowIdle = false;
     mainWindow = undefined;
     whatsappLoaded = false;
     unreadCount = 0;
@@ -904,7 +1099,9 @@ function getDiagnostics() {
       quietHoursActive: isQuietHoursActive(),
       focusMode: settings.focusMode,
       privacyProfile: settings.privacyProfile,
-      captureProtection: settings.captureProtection
+      captureProtection: settings.captureProtection,
+      idlePowerSaver: settings.idlePowerSaver,
+      idleMode: isMainWindowIdle
     },
     memory: {
       current: currentMemory,
@@ -1102,16 +1299,7 @@ function rebuildMenu() {
     {
       label: 'Chat',
       submenu: [
-        { label: 'Go to top of current chat', accelerator: 'Ctrl+Alt+Home', click: () => sendWhatsAppCommand('chat-scroll-top') },
-        { label: 'Go to latest message', accelerator: 'Ctrl+Alt+End', click: () => sendWhatsAppCommand('chat-scroll-bottom') },
-        { label: 'Stop loading old messages', accelerator: 'Ctrl+Alt+Esc', click: () => sendWhatsAppCommand('chat-scroll-cancel') },
-        { type: 'separator' },
-        { label: 'Save unread position', click: () => sendWhatsAppCommand('unread-position-save') },
-        { label: 'Return to unread position', accelerator: 'Ctrl+Alt+U', click: () => sendWhatsAppCommand('unread-position-restore') },
-        { label: 'Copy current chat title', click: () => sendWhatsAppCommand('copy-current-chat-title') },
-        { label: 'Open current chat media panel', click: () => sendWhatsAppCommand('open-media-panel') },
-        { label: 'Show quick reply picker', accelerator: 'Ctrl+Alt+Q', click: () => sendWhatsAppCommand('quick-reply-picker') },
-        { label: 'Quick Reply Templates', submenu: buildQuickReplySubmenu() }
+        { label: 'Resume unread list', accelerator: 'Ctrl+Alt+U', click: () => sendWhatsAppCommand('unread-position-restore') }
       ]
     },
     {
@@ -1127,14 +1315,13 @@ function rebuildMenu() {
       submenu: [
         { label: 'Chat Zoom', submenu: buildZoomSubmenu() },
         { type: 'separator' },
-        { label: 'Actual Size', role: 'resetZoom' },
-        { label: 'Zoom In', role: 'zoomIn' },
-        { label: 'Zoom Out', role: 'zoomOut' },
+        { label: 'Actual Size', click: resetChatZoom },
+        { label: 'Zoom In', click: () => stepChatZoom(1) },
+        { label: 'Zoom Out', click: () => stepChatZoom(-1) },
         { type: 'separator' },
         { label: 'Always on top', type: 'checkbox', checked: alwaysOnTop, accelerator: 'Ctrl+Alt+T', click: toggleAlwaysOnTop },
-        { label: 'Focus WhatsApp', click: focusMainWindow },
         { type: 'separator' },
-        { label: 'Toggle Full Screen', role: 'togglefullscreen' }
+        { label: getLiveMainWindow()?.isFullScreen() ? 'Exit Full Screen' : 'Enter Full Screen', accelerator: 'F11', click: toggleMainFullScreen }
       ]
     }
   ]);
@@ -1143,7 +1330,7 @@ function rebuildMenu() {
 }
 
 function updateTray() {
-  if (!tray) {
+  if (!tray || tray.isDestroyed()) {
     return;
   }
 
@@ -1158,37 +1345,44 @@ function updateTray() {
   });
   const tooltip = buildTrayTooltip(parts);
   const suffix = tooltip.slice('WhatsApp Privacy Blur'.length);
-  tray.setToolTip(tooltip);
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: `WhatsApp Privacy Blur${suffix}`, enabled: false },
-      { type: 'separator' },
-      { label: 'Show WhatsApp', click: focusMainWindow },
-       { label: settings.enabled ? 'Turn Blur Off' : 'Turn Blur On', click: toggleBlur },
-       { label: revealLabel(), click: revealTemporarily },
-       { label: 'Presentation panic mode', click: panicPrivacyMode },
-       { label: settings.focusMode ? 'Turn Focus Mode Off' : 'Turn Focus Mode On', click: toggleFocusMode },
-      { label: 'Optimize Now', click: optimizeNow },
-      { label: 'Diagnostics', click: createDiagnosticsWindow },
-      { type: 'separator' },
-      { label: 'Quit', click: quitApp }
-    ])
-  );
+  safelyUseTray((currentTray) => {
+    currentTray.setToolTip(tooltip);
+    currentTray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: `WhatsApp Privacy Blur${suffix}`, enabled: false },
+        { type: 'separator' },
+        { label: 'Show WhatsApp', click: focusMainWindow },
+        { label: settings.enabled ? 'Turn Blur Off' : 'Turn Blur On', click: toggleBlur },
+        { label: revealLabel(), click: revealTemporarily },
+        { label: 'Presentation panic mode', click: panicPrivacyMode },
+        { label: settings.focusMode ? 'Turn Focus Mode Off' : 'Turn Focus Mode On', click: toggleFocusMode },
+        { label: 'Optimize Now', click: optimizeNow },
+        { label: 'Diagnostics', click: createDiagnosticsWindow },
+        { type: 'separator' },
+        { label: 'Quit', click: quitApp }
+      ])
+    );
+  });
 }
 
 function createTray() {
-  if (tray) {
+  if (tray && !tray.isDestroyed()) {
     return;
   }
 
-  const trayIcon = nativeImage.createFromPath(APP_TRAY_ICON_PATH).resize({ width: 16, height: 16 });
-  if (typeof trayIcon.setTemplateImage === 'function') {
-    trayIcon.setTemplateImage(false);
+  try {
+    const trayIcon = nativeImage.createFromPath(APP_TRAY_ICON_PATH).resize({ width: 16, height: 16 });
+    if (typeof trayIcon.setTemplateImage === 'function') {
+      trayIcon.setTemplateImage(false);
+    }
+    const fallbackIcon = nativeImage.createFromPath(APP_ICON_PATH);
+    tray = new Tray(trayIcon.isEmpty() ? fallbackIcon : trayIcon);
+    tray.on('click', () => focusMainWindow());
+    updateTray();
+  } catch {
+    tray = undefined;
+    logEvent('tray', 'tray initialization failed');
   }
-  tray = new Tray(trayIcon.isEmpty() ? APP_ICON_PATH : trayIcon);
-  tray.on('click', focusMainWindow);
-  tray.on('double-click', focusMainWindow);
-  updateTray();
 }
 
 function registerShortcut(accelerator, callback) {
@@ -1241,6 +1435,10 @@ function registerIpcHandlers() {
       clipboard.writeText(result.value);
       showWhatsAppToast('Chat title copied');
     }
+  });
+  ipcMain.on('whatsapp:exit-full-screen', (event) => {
+    if (!isMainSender(event)) return;
+    setMainFullScreen(false);
   });
   ipcMain.on('whatsapp:priority-state', (_event, state) => {
     if (!isMainSender(_event)) return;

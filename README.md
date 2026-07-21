@@ -46,9 +46,8 @@ Configure blur for chat messages, previews, media, gallery thumbnails, text inpu
 
 ## Workflow tools
 
-- Jump to the top or latest message and cancel old-message loading.
-- Restore unread-list position, copy the current chat title, and open the current chat's media or info panel when available.
-- Use searchable, category-aware quick replies. Enter each as `Category :: reply text`; replies are inserted into the composer and are never sent automatically.
+- Opening a chat from the active Unread filter captures your list anchor. After a reply changes WhatsApp's ordering, the app returns the list to that same place automatically; `Resume unread list` is the manual fallback.
+- Use searchable, category-aware quick replies with `Ctrl + Alt + Q`. Enter each as `Category :: reply text`; replies are inserted into the composer and are never sent automatically.
 
 ## Shortcuts
 
@@ -58,9 +57,6 @@ Configure blur for chat messages, previews, media, gallery thumbnails, text inpu
 | `Ctrl + ,` | Open settings |
 | `Ctrl + R` | Reload WhatsApp Web |
 | `Ctrl + Alt + R` | Reveal temporarily |
-| `Ctrl + Alt + Home` | Go to top of current chat |
-| `Ctrl + Alt + End` | Go to latest message |
-| `Ctrl + Alt + Esc` | Stop loading older messages |
 | `Ctrl + Alt + T` | Toggle always-on-top |
 | `Ctrl + Alt + U` | Restore unread-list position |
 | `Ctrl + Alt + F` | Toggle focus mode |
@@ -111,6 +107,12 @@ npm.cmd run verify:release
 ```
 
 Build outputs are written to `app/dist/` and are intentionally ignored by Git. CI can use `CSC_LINK` and `CSC_KEY_PASSWORD` when code-signing credentials are configured.
+
+## Windows distribution
+
+- Use the NSIS installer for the most reliable Start Menu and taskbar pinning.
+- The single-file `portable.exe` is for no-install or USB use. Windows can treat its temporary extracted child executable as the pinned target, so it is not the recommended format for pinning.
+- For a no-install build that can be pinned reliably, extract `WhatsApp Privacy Blur-<version>-win.zip` to a permanent folder, then pin `WhatsApp Privacy Blur.exe` from that folder.
 
 ## Project structure
 

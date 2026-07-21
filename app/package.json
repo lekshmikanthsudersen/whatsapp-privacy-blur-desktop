@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-privacy-blur",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Standalone WhatsApp Web desktop wrapper with privacy blur controls.",
   "main": "src/main.js",
   "author": "Sudersen",
@@ -40,6 +40,12 @@
           ]
         },
         {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "nsis",
           "arch": [
             "x64"
@@ -48,7 +54,8 @@
       ]
     },
     "portable": {
-      "artifactName": "${productName}-${version}-portable.${ext}"
+      "artifactName": "${productName}-${version}-portable.${ext}",
+      "unpackDirName": "WhatsAppPrivacyBlurPortable"
     },
     "nsis": {
       "artifactName": "${productName} Setup ${version}.${ext}",

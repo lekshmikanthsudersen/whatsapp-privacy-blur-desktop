@@ -10,6 +10,7 @@ const SETTINGS_PAGE_DEFAULTS = Object.freeze({
   noTransitionDelay: false,
   unblurOnAppHover: false,
   closeToTray: true,
+  idlePowerSaver: true,
   temporaryRevealMs: 8000,
   zoomFactor: 1,
   preserveUnreadListPosition: true,

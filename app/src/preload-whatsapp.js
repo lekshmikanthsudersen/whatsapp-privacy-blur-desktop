@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS = {
   noTransitionDelay: false,
   unblurOnAppHover: false,
   closeToTray: true,
+  idlePowerSaver: true,
   hasCompletedFirstRun: false,
   temporaryRevealMs: 8000,
   zoomFactor: 1,
@@ -47,6 +48,12 @@ let cachedChatScrollContainer;
 let priorityTimer;
 let scanHealthTimer;
 let isHoldRevealing = false;
+let privacyScannerActive = true;
+let privacyObserver;
+let lastUnreadListInteractionAt = 0;
+let unreadRestoreRunId = 0;
+let fullScreenExitElement;
+let isFullScreen = false;
 
 const OWN_SELECTOR = '[data-wapb-owned="true"]';
 const MESSAGE_SELECTOR = '[data-testid="msg-container"], [data-pre-plain-text], .message-in, .message-out';
@@ -150,6 +157,38 @@ const css = `
 
 .wapb-chat-nav button:hover,
 .wapb-chat-nav button:focus-visible {
+  background: #00a884;
+  color: #071a16;
+  outline: none;
+}
+
+.wapb-fullscreen-exit {
+  position: fixed;
+  top: 12px;
+  right: 18px;
+  z-index: 2147483647;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(233, 237, 239, 0.2);
+  border-radius: 50%;
+  background: rgba(17, 27, 33, 0.92);
+  color: #e9edef;
+  cursor: pointer;
+  font: 500 28px/28px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition: opacity 140ms ease, transform 140ms ease, background 140ms ease;
+}
+
+.wapb-fullscreen-exit.wapb-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.wapb-fullscreen-exit:hover,
+.wapb-fullscreen-exit:focus-visible {
   background: #00a884;
   color: #071a16;
   outline: none;
@@ -624,6 +663,10 @@ function reportSelectorHealth(targets, scanMode) {
 }
 
 function scanPendingRoots(scanMode = 'scoped') {
+  if (!privacyScannerActive) {
+    pendingScanRoots.clear();
+    return;
+  }
   ensureStyle();
   const totals = { messageTargets: 0, previewTargets: 0, mediaTargets: 0, galleryTargets: 0, avatarTargets: 0, inputTargets: 0 };
   for (const root of pendingScanRoots) {
@@ -643,6 +686,9 @@ function scanPendingRoots(scanMode = 'scoped') {
 }
 
 function scheduleScan(root) {
+  if (!privacyScannerActive) {
+    return;
+  }
   if (root instanceof HTMLElement) {
     const scopedRoot = findNearestScanRoot(root);
     if (scopedRoot) {
@@ -675,7 +721,14 @@ function invalidateCachedContainers(element) {
 }
 
 function startObserver() {
-  const observer = new MutationObserver((mutations) => {
+  if (privacyObserver) {
+    return;
+  }
+
+  privacyObserver = new MutationObserver((mutations) => {
+    if (!privacyScannerActive) {
+      return;
+    }
     for (const mutation of mutations) {
       const target = mutation.target instanceof HTMLElement ? mutation.target : undefined;
       invalidateCachedContainers(target);
@@ -687,7 +740,7 @@ function startObserver() {
     }
   });
 
-  observer.observe(document.documentElement, {
+  privacyObserver.observe(document.documentElement, {
     childList: true,
     subtree: true,
     attributes: true,
@@ -695,12 +748,75 @@ function startObserver() {
   });
 }
 
+function setPrivacyScannerActive(active) {
+  const nextActive = Boolean(active);
+  if (nextActive === privacyScannerActive) {
+    return;
+  }
+
+  privacyScannerActive = nextActive;
+  window.clearTimeout(scanTimer);
+  window.clearTimeout(priorityTimer);
+  if (!privacyScannerActive) {
+    pendingScanRoots.clear();
+    privacyObserver?.disconnect();
+    privacyObserver = undefined;
+    return;
+  }
+
+  startObserver();
+  scheduleScan();
+  schedulePriorityState();
+}
+
 function startUnreadWorkflowTracker() {
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      const target = event.target instanceof HTMLElement ? event.target : undefined;
+      const container = findChatListContainer();
+      if (!target || !container || !container.contains(target)) {
+        return;
+      }
+
+      lastUnreadListInteractionAt = Date.now();
+      if (isUnreadFilterActive() && target.closest('[role="row"], [role="listitem"], [data-testid="cell-frame-container"], [aria-selected]')) {
+        saveUnreadPosition(container);
+      }
+    },
+    true
+  );
+
+  document.addEventListener(
+    'wheel',
+    (event) => {
+      const target = event.target instanceof HTMLElement ? event.target : undefined;
+      const container = findChatListContainer();
+      if (target && container?.contains(target)) {
+        lastUnreadListInteractionAt = Date.now();
+      }
+    },
+    { capture: true, passive: true }
+  );
+
   document.addEventListener(
     'keydown',
     (event) => {
+      const target = event.target instanceof HTMLElement ? event.target : undefined;
+      const container = findChatListContainer();
+      if (event.key === 'Enter' && target && container?.contains(target) && isUnreadFilterActive()) {
+        lastUnreadListInteractionAt = Date.now();
+        saveUnreadPosition(container);
+      }
+
       if (event.key === 'Enter' && !event.shiftKey && findMessageInput()?.contains(event.target)) {
         saveUnreadPosition();
+        scheduleUnreadRestoreAfterReply();
+      }
+
+      if (event.key === 'Escape' && isFullScreen) {
+        event.preventDefault();
+        ipcRenderer.send('whatsapp:exit-full-screen');
       }
     },
     true
@@ -712,6 +828,7 @@ function startUnreadWorkflowTracker() {
       const target = event.target instanceof HTMLElement ? event.target : undefined;
       if (target?.closest?.('footer button, footer [role="button"], [aria-label*="Send" i], [data-testid*="send" i]')) {
         saveUnreadPosition();
+        scheduleUnreadRestoreAfterReply();
       }
     },
     true
@@ -879,33 +996,87 @@ function isUnreadFilterActive() {
   });
 }
 
-function saveUnreadPosition() {
+function findUnreadAnchor(container) {
+  const containerRect = container.getBoundingClientRect();
+  const rows = [...container.querySelectorAll('[role="row"], [role="listitem"], [data-testid="cell-frame-container"], [aria-selected]')];
+  const anchor = rows.find((row) => {
+    if (!(row instanceof HTMLElement) || !isVisibleElement(row)) {
+      return false;
+    }
+    const rect = row.getBoundingClientRect();
+    return rect.bottom > containerRect.top + 2 && rect.top < containerRect.bottom - 2;
+  });
+
+  if (!(anchor instanceof HTMLElement)) {
+    return undefined;
+  }
+
+  return {
+    element: anchor,
+    topOffset: anchor.getBoundingClientRect().top - containerRect.top
+  };
+}
+
+function saveUnreadPosition(container = findChatListContainer()) {
   if (!currentSettings.preserveUnreadListPosition) {
     return false;
   }
 
-  const container = findChatListContainer();
   if (!container) {
     return false;
   }
 
   lastUnreadPosition = {
+    container,
     scrollTop: container.scrollTop,
     savedAt: Date.now(),
-    wasUnreadFiltered: isUnreadFilterActive()
+    wasUnreadFiltered: isUnreadFilterActive(),
+    anchor: findUnreadAnchor(container)
   };
+  updateChatNavVisibility();
   return true;
 }
 
-function restoreUnreadPosition() {
-  const container = findChatListContainer();
+function restoreUnreadPosition({ automatic = false } = {}) {
+  const savedContainer = lastUnreadPosition?.container;
+  const container = isCurrentElement(savedContainer) ? savedContainer : findChatListContainer();
   if (!container || !lastUnreadPosition) {
-    showChatToast('No unread position saved');
+    if (!automatic) {
+      showChatToast('No unread position saved');
+    }
+    return false;
+  }
+
+  let targetScrollTop = lastUnreadPosition.scrollTop;
+  const anchor = lastUnreadPosition.anchor;
+  if (anchor?.element instanceof HTMLElement && container.contains(anchor.element)) {
+    const containerRect = container.getBoundingClientRect();
+    const currentOffset = anchor.element.getBoundingClientRect().top - containerRect.top;
+    targetScrollTop = container.scrollTop + currentOffset - anchor.topOffset;
+  }
+
+  container.scrollTop = Math.max(0, targetScrollTop);
+  if (!automatic) {
+    showChatToast('Returned to unread position');
+  }
+  return true;
+}
+
+function scheduleUnreadRestoreAfterReply() {
+  if (!currentSettings.preserveUnreadListPosition || !lastUnreadPosition?.wasUnreadFiltered) {
     return;
   }
 
-  container.scrollTo({ top: lastUnreadPosition.scrollTop, behavior: 'smooth' });
-  showChatToast('Returned to unread position');
+  const runId = ++unreadRestoreRunId;
+  const scheduledAt = Date.now();
+  for (const delayMs of [180, 650, 1300]) {
+    window.setTimeout(() => {
+      if (runId !== unreadRestoreRunId || lastUnreadListInteractionAt > scheduledAt) {
+        return;
+      }
+      restoreUnreadPosition({ automatic: true });
+    }, delayMs);
+  }
 }
 
 function priorityTerms() {
@@ -913,6 +1084,9 @@ function priorityTerms() {
 }
 
 function schedulePriorityState() {
+  if (!privacyScannerActive) {
+    return;
+  }
   window.clearTimeout(priorityTimer);
   priorityTimer = window.setTimeout(updatePriorityState, 650);
 }
@@ -1358,6 +1532,48 @@ function scrollCurrentChat(position) {
   showChatToast('Moving to latest message');
 }
 
+function ensureFullScreenExitControl() {
+  if (!document.body) {
+    return undefined;
+  }
+  if (fullScreenExitElement && document.body.contains(fullScreenExitElement)) {
+    return fullScreenExitElement;
+  }
+
+  fullScreenExitElement = document.createElement('button');
+  fullScreenExitElement.type = 'button';
+  fullScreenExitElement.className = 'wapb-fullscreen-exit';
+  fullScreenExitElement.dataset.wapbOwned = 'true';
+  fullScreenExitElement.textContent = 'X';
+  fullScreenExitElement.title = 'Exit full screen (F11)';
+  fullScreenExitElement.setAttribute('aria-label', 'Exit full screen');
+  fullScreenExitElement.hidden = true;
+  fullScreenExitElement.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    ipcRenderer.send('whatsapp:exit-full-screen');
+  });
+  fullScreenExitElement.addEventListener('mouseenter', () => fullScreenExitElement?.classList.add('wapb-visible'));
+  document.addEventListener('mousemove', (event) => {
+    if (!isFullScreen || !fullScreenExitElement) {
+      return;
+    }
+    fullScreenExitElement.classList.toggle('wapb-visible', event.clientY <= 72 || fullScreenExitElement.matches(':hover'));
+  });
+  document.body.append(fullScreenExitElement);
+  return fullScreenExitElement;
+}
+
+function setFullScreenState(enabled) {
+  isFullScreen = Boolean(enabled);
+  const exitControl = ensureFullScreenExitControl();
+  if (!exitControl) {
+    return;
+  }
+  exitControl.hidden = !isFullScreen;
+  exitControl.classList.remove('wapb-visible');
+}
+
 function ensureChatNav() {
   if (!document.body) {
     return undefined;
@@ -1371,50 +1587,20 @@ function ensureChatNav() {
   navElement.className = 'wapb-chat-nav';
   navElement.dataset.wapbOwned = 'true';
   navElement.setAttribute('role', 'toolbar');
-  navElement.setAttribute('aria-label', 'Current chat navigation');
+  navElement.setAttribute('aria-label', 'Unread chat workflow');
   navElement.hidden = true;
 
-  const topButton = document.createElement('button');
-  topButton.type = 'button';
-  topButton.textContent = 'Top';
-  topButton.title = 'Go to top of current chat (Ctrl+Alt+Home)';
-  topButton.addEventListener('click', (event) => {
+  const resumeUnreadButton = document.createElement('button');
+  resumeUnreadButton.type = 'button';
+  resumeUnreadButton.textContent = 'Resume unread list';
+  resumeUnreadButton.title = 'Return to the unread-list position saved before replying (Ctrl+Alt+U)';
+  resumeUnreadButton.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    scrollCurrentChat('top');
+    restoreUnreadPosition();
   });
 
-  const latestButton = document.createElement('button');
-  latestButton.type = 'button';
-  latestButton.textContent = 'Latest';
-  latestButton.title = 'Go to latest message (Ctrl+Alt+End)';
-  latestButton.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    scrollCurrentChat('bottom');
-  });
-
-  const revealButton = document.createElement('button');
-  revealButton.type = 'button';
-  revealButton.textContent = 'Hold reveal';
-  revealButton.title = 'Hold to reveal, release to restore privacy';
-  const stop = (event) => {
-    event.preventDefault();
-    stopReveal();
-  };
-  revealButton.addEventListener('mousedown', (event) => {
-    event.preventDefault();
-    startHoldReveal();
-  });
-  revealButton.addEventListener('mouseup', stop);
-  revealButton.addEventListener('mouseleave', stop);
-  revealButton.addEventListener('touchstart', (event) => {
-    event.preventDefault();
-    startHoldReveal();
-  }, { passive: false });
-  revealButton.addEventListener('touchend', stop);
-
-  navElement.append(topButton, latestButton, revealButton);
+  navElement.append(resumeUnreadButton);
   document.body.append(navElement);
   return navElement;
 }
@@ -1425,7 +1611,7 @@ function updateChatNavVisibility() {
     return;
   }
 
-  nav.hidden = !findChatScrollContainer();
+  nav.hidden = !currentSettings.preserveUnreadListPosition || !lastUnreadPosition?.wasUnreadFiltered;
 }
 
 ipcRenderer.on('whatsapp-command', (_event, command) => {
@@ -1456,6 +1642,14 @@ ipcRenderer.on('whatsapp-command', (_event, command) => {
   if (command.type === 'privacy-reset') {
     stopReveal();
     showChatToast('Privacy reset');
+  }
+
+  if (command.type === 'set-idle-mode') {
+    setPrivacyScannerActive(!command.idle);
+  }
+
+  if (command.type === 'set-full-screen') {
+    setFullScreenState(command.enabled);
   }
 
   if (command.type === 'unread-position-save') {
@@ -1505,5 +1699,8 @@ window.addEventListener('blur', stopReveal);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     stopReveal();
+  }
+  if (currentSettings.idlePowerSaver) {
+    setPrivacyScannerActive(!document.hidden);
   }
 });
